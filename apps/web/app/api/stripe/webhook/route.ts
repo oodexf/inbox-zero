@@ -6,6 +6,7 @@ import { withError } from "@/utils/middleware";
 import type { Logger } from "@/utils/logger";
 import { syncStripeDataToDb } from "@/ee/billing/stripe/sync-stripe";
 import { getStripeTrialStartedProperties } from "@/ee/billing/stripe/posthog-events";
+import { syncStripeInvoicePayment } from "@/ee/billing/stripe/payments";
 import { syncAiGenerationOverageForUpcomingInvoice } from "@/ee/billing/stripe/ai-overage";
 import { env } from "@/env";
 import { getStripeTrialConvertedAt } from "./trial-conversion";
@@ -84,7 +85,7 @@ const allowedEvents: Stripe.Event.Type[] = [
   "payment_intent.canceled",
 ];
 
-async function processEvent(event: Stripe.Event, logger: Logger) {
+export async function processEvent(event: Stripe.Event, logger: Logger) {
   if (!allowedEvents.includes(event.type)) return;
 
   // All the events we track have a customerId
@@ -111,10 +112,11 @@ async function processEvent(event: Stripe.Event, logger: Logger) {
   ];
 
   if (stripeSync.status === "fulfilled") {
+    tasks.push(syncStripeInvoicePayment({ event, logger }));
     tasks.push(syncAiGenerationOverageForUpcomingInvoice({ event, logger }));
   } else {
     logger.error(
-      "Skipping AI overage sync because Stripe customer sync failed",
+      "Skipping dependent Stripe billing syncs because customer sync failed",
       {
         customerId,
         eventType: event.type,
