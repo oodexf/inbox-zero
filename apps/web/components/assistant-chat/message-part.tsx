@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import type { ReactNode } from "react";
-import { Response } from "@/components/ai-elements/response";
+import { AssistantInlineEmailResponse } from "@/components/assistant-chat/assistant-inline-email-response";
 import {
   Reasoning,
   ReasoningContent,
@@ -35,7 +35,6 @@ import { pluralize } from "@/utils/string";
 
 interface MessagePartProps {
   disableConfirm: boolean;
-  hideInlineEmailCards: boolean;
   isPersistedMessage: boolean;
   isStreaming: boolean;
   messageId: string;
@@ -45,7 +44,7 @@ interface MessagePartProps {
 }
 
 function ErrorToolCard({ error }: { error: string }) {
-  return <div className="rounded border p-2 text-red-500">Error: {error}</div>;
+  return <div className="text-xs text-muted-foreground">Error: {error}</div>;
 }
 
 function isOutputWithError(output: unknown): output is { error: unknown } {
@@ -56,14 +55,12 @@ function getOutputField<T>(output: unknown, field: string): T | undefined {
   if (typeof output === "object" && output !== null && field in output) {
     return (output as Record<string, unknown>)[field] as T;
   }
-  return undefined;
 }
 
 export function MessagePart({
   part,
   isStreaming,
   disableConfirm,
-  hideInlineEmailCards,
   isPersistedMessage,
   messageId,
   partIndex,
@@ -83,12 +80,13 @@ export function MessagePart({
   }
 
   if (part.type === "text") {
-    const text =
-      hideInlineEmailCards && part.text
-        ? stripInlineEmailSections(part.text)
-        : part.text;
+    const text = part.text;
     if (!text) return null;
-    return <Response key={key}>{text}</Response>;
+    return (
+      <AssistantInlineEmailResponse key={key}>
+        {text}
+      </AssistantInlineEmailResponse>
+    );
   }
 
   if (part.type === "file") {
@@ -177,11 +175,7 @@ export function MessagePart({
       return <BasicToolInfo key={toolCallId} text="Searching inbox..." />;
     }
     if (state === "output-available") {
-      const { output } = part;
-      if (isOutputWithError(output)) {
-        return <ErrorToolCard key={toolCallId} error={String(output.error)} />;
-      }
-      return <SearchInboxResult key={toolCallId} output={output} />;
+      return <SearchInboxResult key={toolCallId} output={part.output} />;
     }
   }
 
@@ -290,6 +284,16 @@ export function MessagePart({
       loadingText: "Reading rules and settings...",
       renderSuccess: ({ toolCallId }) => (
         <BasicToolInfo key={toolCallId} text="Read rules and settings" />
+      ),
+    });
+  }
+
+  if (part.type === "tool-getRuleExecutionForMessage") {
+    return renderToolStatus({
+      part,
+      loadingText: "Reading rule execution details...",
+      renderSuccess: ({ toolCallId }) => (
+        <BasicToolInfo key={toolCallId} text="Read rule execution details" />
       ),
     });
   }
@@ -622,18 +626,6 @@ export function MessagePart({
   }
 
   return null;
-}
-
-const INLINE_EMAIL_SECTION_RE =
-  /\n{0,2}##[^\n]*\n\s*<emails>[\s\S]*?<\/emails>/g;
-const INLINE_EMAIL_BLOCK_RE = /\n{0,2}<emails>[\s\S]*?<\/emails>/g;
-
-function stripInlineEmailSections(text: string) {
-  return text
-    .replace(INLINE_EMAIL_SECTION_RE, "")
-    .replace(INLINE_EMAIL_BLOCK_RE, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 function getInProgressManageInboxOutput(input: {
